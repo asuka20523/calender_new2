@@ -16,7 +16,7 @@
 html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;color:var(--text);}
 #app{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden;background:var(--bg);padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
 .header{display:flex;align-items:center;justify-content:space-between;padding:6px 12px 4px;flex-shrink:0;}
-.header .title{font-size:17px;font-weight:600;}
+.header .title{font-size:17px;font-weight:600;cursor:pointer;text-decoration-color:transparent;}
 .header .nav{display:flex;align-items:center;gap:6px;}
 .iconbtn{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:none;border:none;font-size:18px;color:var(--text);cursor:pointer;}
 .todayBtn{border:1.5px solid var(--accent);background:#eaf1ff;color:var(--accent);font-size:12px;font-weight:700;padding:5px 11px;border-radius:14px;cursor:pointer;flex-shrink:0;}
@@ -175,20 +175,22 @@ function parseDate(s){const[y,m,d]=s.split("-").map(Number);return new Date(y,m-
 function startOfWeek(d){const n=new Date(d);n.setDate(n.getDate()-n.getDay());return n;}
 
 const _hc={};
-function getHolidays(year){
+function getHolidayMap(year){
   if(_hc[year])return _hc[year];
-  const h=new Set();
-  const a=(m,d)=>h.add(year+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0"));
+  const h=new Map();
+  const a=(m,d,name)=>h.set(year+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0"),name);
   const nw=(m,wd,n)=>{let d=new Date(year,m-1,1),c=0;for(let i=0;i<31;i++){if(d.getDay()===wd&&++c===n)return d.getDate();d.setDate(d.getDate()+1);}};
-  a(1,1);a(1,nw(1,1,2));a(2,11);a(2,23);
-  a(3,Math.floor(20.8431+0.242194*(year-1980)-Math.floor((year-1980)/4)));
-  a(4,29);a(5,3);a(5,4);a(5,5);a(7,nw(7,1,3));a(8,11);a(9,nw(9,1,3));
-  a(9,Math.floor(23.2488+0.242194*(year-1980)-Math.floor((year-1980)/4)));
-  a(10,nw(10,1,2));a(11,3);a(11,23);
-  [...h].forEach(ds=>{const d=parseDate(ds);if(d.getDay()===0){const n=new Date(d);n.setDate(n.getDate()+1);h.add(fmtDate(n));}});
+  a(1,1,"元日");a(1,nw(1,1,2),"成人の日");a(2,11,"建国記念の日");a(2,23,"天皇誕生日");
+  a(3,Math.floor(20.8431+0.242194*(year-1980)-Math.floor((year-1980)/4)),"春分の日");
+  a(4,29,"昭和の日");a(5,3,"憲法記念日");a(5,4,"みどりの日");a(5,5,"こどもの日");
+  a(7,nw(7,1,3),"海の日");a(8,11,"山の日");a(9,nw(9,1,3),"敬老の日");
+  a(9,Math.floor(23.2488+0.242194*(year-1980)-Math.floor((year-1980)/4)),"秋分の日");
+  a(10,nw(10,1,2),"スポーツの日");a(11,3,"文化の日");a(11,23,"勤労感謝の日");
+  [...h.keys()].forEach(ds=>{const d=parseDate(ds);if(d.getDay()===0){const n=new Date(d);n.setDate(n.getDate()+1);if(!h.has(fmtDate(n)))h.set(fmtDate(n),"振替休日");}});
   return _hc[year]=h;
 }
-function isHoliday(ds){return getHolidays(parseInt(ds)).has(ds);}
+function isHoliday(ds){return getHolidayMap(parseInt(ds)).has(ds);}
+function getHolidayName(ds){return getHolidayMap(parseInt(ds)).get(ds)||null;}
 function colorOf(id){return DATA.colors.find(c=>c.id===id)||DATA.colors[0];}
 function eventsForDate(ds){
   const d=parseDate(ds);
@@ -254,6 +256,7 @@ function buildHeader(showNav){
   const left=document.createElement("button");left.className="iconbtn";left.textContent="‹";left.onclick=()=>shiftCursor(-1);
   const title=document.createElement("div");title.className="title";
   title.textContent=state.cursor.getFullYear()+"年"+(state.cursor.getMonth()+1)+"月";
+  title.style.cursor="pointer";title.onclick=()=>openMonthPicker();
   const right=document.createElement("button");right.className="iconbtn";right.textContent="›";right.onclick=()=>shiftCursor(1);
   const todayBtn=document.createElement("button");todayBtn.className="todayBtn";todayBtn.textContent="今日";
   todayBtn.onclick=()=>{state.cursor=new Date();state.selectedDate=todayStr;render();};
@@ -456,7 +459,9 @@ function buildDetailPanel(){
   const _dw=d.getDay(),_isHol=isHoliday(state.selectedDate);
   const _dwColor=(_dw===0||_isHol)?"#d85a4a":_dw===6?"#2979ff":"var(--text)";
   const _dwName=["日","月","火","水","木","金","土"][_dw];
-  dd.innerHTML=(d.getMonth()+1)+"月"+d.getDate()+"日（<span style='color:"+_dwColor+"'>"+_dwName+"</span>）";
+  const _holName=getHolidayName(state.selectedDate);
+  const _holSpan=_holName?" <span style='color:#d85a4a;font-size:11px;font-weight:400;'>"+_holName+"</span>":"";
+  dd.innerHTML=(d.getMonth()+1)+"月"+d.getDate()+"日（<span style='color:"+_dwColor+"'>"+_dwName+"</span>）"+_holSpan;
   head.appendChild(dd);panel.appendChild(head);
   const list=document.createElement("div");list.className="detailList";
   const items=eventsForDate(state.selectedDate);
@@ -482,6 +487,13 @@ function buildDetailItem(ev,occ){
   const txt=document.createElement("div");txt.className="txt";
   const ti=document.createElement("div");ti.className="ti"+(ev.done?" done":"");ti.textContent=ev.title;txt.appendChild(ti);
   if(ev.endDate&&ev.endDate>ev.date){const dr=document.createElement("div");dr.className="memoTxt";dr.textContent=ev.date+" 〜 "+ev.endDate;txt.appendChild(dr);}
+  if(ev.location&&ev.location.trim()){
+    const locLink=document.createElement("div");locLink.className="memoTxt";
+    locLink.style.cssText="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--accent);";
+    locLink.innerHTML="📍 "+ev.location;
+    locLink.onclick=(e)=>{e.stopPropagation();window.open("https://www.google.com/maps/search/?q="+encodeURIComponent(ev.location),"_blank");};
+    txt.appendChild(locLink);
+  }
   if(ev.memo){const m=document.createElement("div");m.className="memoTxt";m.textContent=ev.memo;txt.appendChild(m);}
   row.appendChild(txt);
   const del=document.createElement("button");del.className="delBtn";del.textContent="削除";
@@ -549,21 +561,36 @@ function buildSettingsBody(){
 
   const g2=document.createElement("div");g2.className="settingsGroup";
   const colorTabBtn=document.createElement("div");colorTabBtn.style.cssText="display:flex;align-items:center;justify-content:space-between;background:#fff;border:0.5px solid var(--line);border-radius:12px;padding:13px 14px;cursor:pointer;";
-  const colorTabLbl=document.createElement("div");colorTabLbl.style.fontSize="14px";colorTabLbl.textContent="色の管理";
+  const colorTabLbl=document.createElement("div");colorTabLbl.style.fontSize="14px";colorTabLbl.textContent="色の管理・並び替え";
   const colorTabArr=document.createElement("div");colorTabArr.style.cssText="font-size:12px;color:var(--sub);";colorTabArr.textContent="▼ タップで展開";
   colorTabBtn.append(colorTabLbl,colorTabArr);
-  const colorGrid=document.createElement("div");colorGrid.style.cssText="display:none;flex-wrap:wrap;gap:8px;padding:12px;background:#fff;border:0.5px solid var(--line);border-radius:0 0 12px 12px;margin-top:-1px;";
-  DATA.colors.forEach(c=>{
-    const w2=document.createElement("div");w2.style.cssText="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;";
-    const sw=document.createElement("div");sw.style.cssText="width:36px;height:36px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;position:relative;";
-    sw.style.background=c.hex;if(c.name)sw.textContent=c.name[0];
-    if(c.custom){const x=document.createElement("div");x.style.cssText="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#ff5252;border-radius:50%;color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;";x.textContent="×";x.onclick=(e)=>{e.stopPropagation();if(confirm("この色を削除しますか？")){DATA.colors=DATA.colors.filter(x=>x.id!==c.id);save();renderSettingsBody(wrap);}};sw.appendChild(x);}
-    const lbl=document.createElement("div");lbl.style.cssText="font-size:9px;color:var(--sub);max-width:36px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;";lbl.textContent=c.name||"";
-    w2.append(sw,lbl);w2.onclick=()=>renameColor(c,()=>renderSettingsBody(wrap));colorGrid.appendChild(w2);
-  });
+  const colorList=document.createElement("div");colorList.style.cssText="display:none;flex-direction:column;background:#fff;border:0.5px solid var(--line);border-radius:0 0 12px 12px;margin-top:-1px;overflow:hidden;";
+  function rebuildColorList(){
+    colorList.innerHTML="";
+    DATA.colors.forEach((col,idx)=>{
+      const row=document.createElement("div");
+      row.style.cssText="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:0.5px solid var(--line);";
+      if(idx===DATA.colors.length-1)row.style.borderBottom="none";
+      const sw=document.createElement("div");sw.style.cssText="width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;";
+      sw.style.background=col.hex;if(col.name)sw.textContent=col.name[0];
+      const nm=document.createElement("div");nm.style.cssText="flex:1;font-size:13px;color:"+(col.name?"var(--text)":"var(--sub)");nm.textContent=col.name||"名称未設定";
+      nm.onclick=()=>renameColor(col,()=>rebuildColorList());
+      const arrowBox=document.createElement("div");arrowBox.style.cssText="display:flex;gap:4px;";
+      const upBtn=document.createElement("button");upBtn.textContent="▲";upBtn.style.cssText="border:none;background:var(--btnbg);border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;color:var(--sub);";
+      const dnBtn=document.createElement("button");dnBtn.textContent="▼";dnBtn.style.cssText="border:none;background:var(--btnbg);border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;color:var(--sub);";
+      upBtn.disabled=idx===0;dnBtn.disabled=idx===DATA.colors.length-1;
+      upBtn.onclick=(e)=>{e.stopPropagation();if(idx>0){[DATA.colors[idx-1],DATA.colors[idx]]=[DATA.colors[idx],DATA.colors[idx-1]];save();rebuildColorList();}};
+      dnBtn.onclick=(e)=>{e.stopPropagation();if(idx<DATA.colors.length-1){[DATA.colors[idx],DATA.colors[idx+1]]=[DATA.colors[idx+1],DATA.colors[idx]];save();rebuildColorList();}};
+      arrowBox.append(upBtn,dnBtn);
+      row.append(sw,nm,arrowBox);
+      if(col.custom){const x=document.createElement("button");x.textContent="削除";x.style.cssText="border:none;background:#fff0f0;color:#d85a4a;border-radius:6px;font-size:11px;padding:4px 8px;cursor:pointer;";x.onclick=(e)=>{e.stopPropagation();if(confirm("この色を削除しますか?")){DATA.colors=DATA.colors.filter(cc=>cc.id!==col.id);save();rebuildColorList();}};row.appendChild(x);}
+      colorList.appendChild(row);
+    });
+  }
+  rebuildColorList();
   let colorOpen=false;
-  colorTabBtn.onclick=()=>{colorOpen=!colorOpen;colorGrid.style.display=colorOpen?"flex":"none";colorTabArr.textContent=colorOpen?"▲ 折りたたむ":"▼ タップで展開";};
-  g2.append(colorTabBtn,colorGrid);wrap.appendChild(g2);
+  colorTabBtn.onclick=()=>{colorOpen=!colorOpen;colorList.style.display=colorOpen?"flex":"none";colorTabArr.textContent=colorOpen?"▲ 折りたたむ":"▼ タップで展開";};
+  g2.append(colorTabBtn,colorList);wrap.appendChild(g2);
 
   const g3=document.createElement("div");g3.className="settingsGroup";
   const h3=document.createElement("h3");h3.textContent="カレンダー上の予定テキスト設定";g3.appendChild(h3);
@@ -595,13 +622,48 @@ function buildSettingsBody(){
   });tcOpt.append(tcLbl,tcBtns);g3.appendChild(tcOpt);
   wrap.appendChild(g3);return wrap;
 }
+function openMonthPicker(){
+  const ov=document.createElement("div");ov.className="overlay";ov.style.zIndex=80;
+  ov.onclick=(e)=>{if(e.target===ov)ov.remove();};
+  const sh=document.createElement("div");sh.className="sheet";
+  const head=document.createElement("div");head.className="sheetHead";
+  const tt=document.createElement("div");tt.className="st";tt.textContent="月を選択";
+  const cl=document.createElement("button");cl.className="cancel";cl.textContent="閉じる";cl.onclick=()=>ov.remove();
+  head.append(cl,tt,document.createElement("span"));sh.appendChild(head);
+  let pickYear=state.cursor.getFullYear();
+  const body=document.createElement("div");body.style.padding="12px 16px 24px";
+  function buildPicker(){
+    body.innerHTML="";
+    const yrRow=document.createElement("div");yrRow.style.cssText="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:16px;";
+    const prevY=document.createElement("button");prevY.textContent="‹";prevY.style.cssText="border:none;background:none;font-size:22px;color:var(--text);cursor:pointer;padding:4px 10px;";prevY.onclick=()=>{pickYear--;buildPicker();};
+    const yrLbl=document.createElement("div");yrLbl.style.cssText="font-size:17px;font-weight:600;min-width:80px;text-align:center;";yrLbl.textContent=pickYear+"年";
+    const nextY=document.createElement("button");nextY.textContent="›";nextY.style.cssText="border:none;background:none;font-size:22px;color:var(--text);cursor:pointer;padding:4px 10px;";nextY.onclick=()=>{pickYear++;buildPicker();};
+    yrRow.append(prevY,yrLbl,nextY);body.appendChild(yrRow);
+    const grid=document.createElement("div");grid.style.cssText="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;";
+    for(let m=0;m<12;m++){
+      const btn=document.createElement("button");
+      const isNow=pickYear===state.cursor.getFullYear()&&m===state.cursor.getMonth();
+      btn.textContent=(m+1)+"月";
+      btn.style.cssText="padding:12px 0;border-radius:10px;border:1px solid var(--line);font-size:14px;cursor:pointer;";
+      btn.style.background=isNow?"var(--accent)":"var(--btnbg)";
+      btn.style.color=isNow?"#fff":"var(--text)";
+      btn.style.fontWeight=isNow?"700":"400";
+      btn.onclick=()=>{state.cursor=new Date(pickYear,m,1);ov.remove();render();};
+      grid.appendChild(btn);
+    }
+    body.appendChild(grid);
+  }
+  buildPicker();
+  sh.appendChild(body);ov.appendChild(sh);document.body.appendChild(ov);
+}
 function renameColor(c,cb){
   const nm=prompt("この色の名前を入力してください",c.name||"");
   if(nm!==null){c.name=nm.trim();save();if(cb)cb();}
 }
 
 function openForm(ev){
-  state.editing=ev?Object.assign({},ev):{id:"e"+Date.now(),type:"event",title:"",date:state.selectedDate,endDate:"",time:"",endTime:"",colorId:DATA.colors[0].id,repeat:"none",memo:"",done:false};
+  state.editing=ev?Object.assign({},ev):{id:"e"+Date.now(),type:"event",title:"",date:state.selectedDate,endDate:"",time:"",endTime:"",colorId:DATA.colors[0].id,repeat:"none",memo:"",location:"",done:false};
+  if(!state.editing.location)state.editing.location="";
   if(!state.editing.endTime)state.editing.endTime="";
   if(!state.editing.endDate)state.editing.endDate="";
   if(!state.editing._showAllColors)state.editing._showAllColors=false;
@@ -702,6 +764,13 @@ function renderForm(sheet,overlay){
   [["none","なし"],["daily","毎日"],["weekly","毎週"],["monthly","毎月"],["yearly","毎年"]].forEach(([v,l])=>{
     const o=document.createElement("option");o.value=v;o.textContent=l;if(ed.repeat===v)o.selected=true;rs.appendChild(o);
   });rs.onchange=()=>{ed.repeat=rs.value;};repRow.append(rl,rs);body.appendChild(repRow);
+
+  const locRow=document.createElement("div");locRow.className="formRow";
+  const ll=document.createElement("label");ll.textContent="場所";
+  const li=document.createElement("input");li.type="text";li.value=ed.location||"";li.placeholder="場所を入力（Googleマップで検索）";
+  li.style.cssText="flex:1;border:none;background:none;font-size:15px;color:var(--text);outline:none;min-width:0;";
+  li.oninput=()=>{ed.location=li.value;};
+  locRow.append(ll,li);body.appendChild(locRow);
 
   const memoRow=document.createElement("div");memoRow.className="formRow";
   const ml=document.createElement("label");ml.textContent="メモ";
