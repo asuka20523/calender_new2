@@ -491,7 +491,15 @@ function buildDetailItem(ev,occ){
     const locLink=document.createElement("div");locLink.className="memoTxt";
     locLink.style.cssText="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--accent);";
     locLink.innerHTML="📍 "+ev.location;
-    locLink.onclick=(e)=>{e.stopPropagation();window.open("https://www.google.com/maps/search/?q="+encodeURIComponent(ev.location),"_blank");};
+    locLink.onclick=(e)=>{
+    e.stopPropagation();
+    const url="https://maps.google.com/maps?q="+encodeURIComponent(ev.location);
+    const a=document.createElement("a");
+    a.href=url;a.target="_blank";a.rel="noopener noreferrer";
+    a.style.cssText="position:fixed;opacity:0;pointer-events:none;";
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>document.body.removeChild(a),300);
+  };
     txt.appendChild(locLink);
   }
   if(ev.memo){const m=document.createElement("div");m.className="memoTxt";m.textContent=ev.memo;txt.appendChild(m);}
