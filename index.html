@@ -46,9 +46,11 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
 .cell.sunday .datenum,.cell.holiday .datenum{color:#d85a4a;}
 .cell.saturday .datenum{color:#2979ff;}
 .cell.selected{outline:1.5px solid var(--accent);outline-offset:-1.5px;}
-.pill{font-size:8.5px;line-height:10px;padding:1px 3px;border-radius:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;border:1px solid transparent;color:#000!important;}
+.pill{font-size:8.5px;line-height:10px;padding:1px 3px;border-radius:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;border:1px solid transparent;}
 .pill.task.done{text-decoration:line-through;opacity:.5;}
-.morepill{font-size:9px;color:var(--sub);text-align:right;padding-right:2px;font-weight:600;}
+.moreCorner{position:absolute;bottom:0;right:0;width:28px;height:28px;pointer-events:none;}
+.moreTriBg{position:absolute;inset:0;clip-path:polygon(100% 0,100% 100%,0 100%);background:rgba(80,80,80,0.22);}
+.moreNum{position:absolute;bottom:1px;right:2px;font-size:8px;font-weight:700;color:#333;line-height:1;}
 
 /* ===== DETAIL PANEL ===== */
 .detailPanel{flex-shrink:0;background:var(--card);border-top:1px solid var(--line);height:28vh;display:flex;flex-direction:column;}
@@ -145,6 +147,9 @@ const DEF_COLORS=(()=>{
 function loadData(){try{const r=localStorage.getItem(LS_KEY);if(r)return JSON.parse(r);}catch(e){}return{events:[],colors:DEF_COLORS,templates:[],history:[],monthScrollMode:"vertical"};}
 let DATA=loadData();
 if(!DATA.monthScrollMode)DATA.monthScrollMode="vertical";
+if(!DATA.pillFontSize)DATA.pillFontSize=3;
+if(!DATA.pillFontWeight)DATA.pillFontWeight=3;
+if(!DATA.pillTextColor)DATA.pillTextColor="black";
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(DATA));}
 
 const todayStr=fmtDate(new Date());
@@ -177,7 +182,7 @@ function eventsForDate(ds){
 }
 function matchDate(ev,d){
   const ed=parseDate(ev.date);
-  if(ev.repeat==="none")return ev.date===fmtDate(d);
+  if(ev.repeat==="none"){if(ev.endDate&&ev.endDate>=ev.date){const ds=fmtDate(d);return ds>=ev.date&&ds<=ev.endDate;}return ev.date===fmtDate(d);}
   if(d<ed)return false;
   if(ev.repeat==="daily")return true;
   if(ev.repeat==="weekly")return d.getDay()===ed.getDay();
@@ -314,15 +319,26 @@ function buildCell(d,other){
   const num=document.createElement("div");num.className="datenum";num.textContent=d.getDate();
   cell.appendChild(num);
   const items=eventsForDate(ds);
+  const FSIZES=[7,8,9,10,11],FWEIGHTS=[400,500,600,700,800];
+  const pFS=FSIZES[(DATA.pillFontSize||3)-1]+"px";
+  const pFW=FWEIGHTS[(DATA.pillFontWeight||3)-1];
+  const pFC=DATA.pillTextColor==="white"?"#fff":"#000";
   items.slice(0,4).forEach(ev=>{
     const p=document.createElement("div");
     p.className="pill"+(ev.type==="task"?" task":"")+(ev.done?" done":"");
     const col=colorOf(ev.colorId);
     p.style.background=col.hex+"33";p.style.borderColor=col.hex+"66";
+    p.style.fontSize=pFS;p.style.fontWeight=pFW;p.style.color=pFC;
     p.textContent=(ev.type==="task"?"☐ ":"")+ev.title;
     cell.appendChild(p);
   });
-  if(items.length>4){const mp=document.createElement("div");mp.className="morepill";mp.textContent="+"+(items.length-4);cell.appendChild(mp);}
+  if(items.length>4){
+    const corner=document.createElement("div");corner.className="moreCorner";
+    const triBg=document.createElement("div");triBg.className="moreTriBg";
+    const mNum=document.createElement("div");mNum.className="moreNum";
+    mNum.textContent="+"+(items.length-4);
+    corner.append(triBg,mNum);cell.appendChild(corner);
+  }
   cell.onclick=()=>{
     state.selectedDate=ds;state.cursor=new Date(d.getFullYear(),d.getMonth(),1);
     if(DATA.monthScrollMode==="vertical"&&state.tab==="month"){
@@ -359,7 +375,10 @@ function buildDetailPanel(){
   const head=document.createElement("div");head.className="detailHead";
   const d=parseDate(state.selectedDate);
   const dd=document.createElement("div");dd.className="d";
-  dd.textContent=(d.getMonth()+1)+"月"+d.getDate()+"日（"+["日","月","火","水","木","金","土"][d.getDay()]+"）";
+  const _dw=d.getDay(),_isHol=isHoliday(state.selectedDate);
+  const _dwColor=(_dw===0||_isHol)?"#d85a4a":_dw===6?"#2979ff":"var(--text)";
+  const _dwName=["日","月","火","水","木","金","土"][_dw];
+  dd.innerHTML=(d.getMonth()+1)+"月"+d.getDate()+"日（<span style='color:"+_dwColor+"'>"+_dwName+"</span>）";
   head.appendChild(dd);panel.appendChild(head);
   const list=document.createElement("div");list.className="detailList";
   const items=eventsForDate(state.selectedDate);
@@ -442,6 +461,7 @@ function buildSettingsHeader(){
   const t=document.createElement("div");t.className="title";t.textContent="設定";
   h.appendChild(t);return h;
 }
+function renderSettingsBody(wrap){wrap.innerHTML="";const fresh=buildSettingsBody();while(fresh.firstChild)wrap.appendChild(fresh.firstChild);}
 function buildSettingsBody(){
   const wrap=document.createElement("div");wrap.className="settingsWrap";
   const g1=document.createElement("div");g1.className="settingsGroup";
@@ -458,15 +478,75 @@ function buildSettingsBody(){
   });
   wrap.appendChild(g1);
   const g2=document.createElement("div");g2.className="settingsGroup";
-  const h2=document.createElement("h3");h2.textContent="色の管理（タップで名前変更）";g2.appendChild(h2);
+  const colorTabBtn=document.createElement("div");
+  colorTabBtn.style.cssText="display:flex;align-items:center;justify-content:space-between;background:#fff;border:0.5px solid var(--line);border-radius:12px;padding:13px 14px;cursor:pointer;";
+  const colorTabLbl=document.createElement("div");colorTabLbl.style.fontSize="14px";colorTabLbl.textContent="色の管理";
+  const colorTabArr=document.createElement("div");colorTabArr.style.cssText="font-size:12px;color:var(--sub);";colorTabArr.textContent="▼ タップで展開";
+  colorTabBtn.append(colorTabLbl,colorTabArr);
+  const colorGrid=document.createElement("div");
+  colorGrid.style.cssText="display:none;flex-wrap:wrap;gap:8px;padding:12px;background:#fff;border:0.5px solid var(--line);border-radius:0 0 12px 12px;margin-top:-1px;";
   DATA.colors.forEach(c=>{
-    const item=document.createElement("div");item.className="colorListItem";
-    const sw=document.createElement("div");sw.className="sw";sw.style.background=c.hex;
-    if(c.name)sw.textContent=c.name[0];
-    const nm=document.createElement("div");nm.className="nm"+(c.name?" named":"");nm.textContent=c.name||"名称未設定";
-    item.append(sw,nm);item.onclick=()=>renameColor(c);g2.appendChild(item);
+    const wrap2=document.createElement("div");wrap2.style.cssText="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;";
+    const sw=document.createElement("div");sw.style.cssText="width:36px;height:36px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;";
+    sw.style.background=c.hex;if(c.name)sw.textContent=c.name[0];
+    const lbl=document.createElement("div");lbl.style.cssText="font-size:9px;color:var(--sub);max-width:36px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;";
+    lbl.textContent=c.name||"";
+    wrap2.append(sw,lbl);wrap2.onclick=()=>renameColor(c);colorGrid.appendChild(wrap2);
   });
-  wrap.appendChild(g2);return wrap;
+  let colorOpen=false;
+  colorTabBtn.onclick=()=>{colorOpen=!colorOpen;colorGrid.style.display=colorOpen?"flex":"none";colorTabArr.textContent=colorOpen?"▲ 折りたたむ":"▼ タップで展開";};
+  g2.append(colorTabBtn,colorGrid);
+  wrap.appendChild(g2);
+
+  /* 予定テキスト設定 */
+  const g3=document.createElement("div");g3.className="settingsGroup";
+  const h3=document.createElement("h3");h3.textContent="カレンダー上の予定テキスト設定";g3.appendChild(h3);
+
+  // フォントサイズ
+  const fsOpt=document.createElement("div");fsOpt.className="settingsOpt";fsOpt.style.flexDirection="column";fsOpt.style.alignItems="flex-start";fsOpt.style.gap="8px";
+  const fsLbl=document.createElement("div");fsLbl.className="label";fsLbl.textContent="文字の大きさ";
+  const fsBtns=document.createElement("div");fsBtns.style.cssText="display:flex;gap:6px;width:100%;";
+  ["極小","小","中","大","極大"].forEach((l,i)=>{
+    const b=document.createElement("button");b.textContent=l;
+    b.style.cssText="flex:1;padding:7px 0;border-radius:8px;border:1px solid var(--line);font-size:11px;cursor:pointer;";
+    b.style.background=DATA.pillFontSize===(i+1)?"var(--accent)":"var(--btnbg)";
+    b.style.color=DATA.pillFontSize===(i+1)?"#fff":"var(--sub)";
+    b.onclick=()=>{DATA.pillFontSize=i+1;save();renderSettingsBody(wrap);};
+    fsBtns.appendChild(b);
+  });
+  fsOpt.append(fsLbl,fsBtns);g3.appendChild(fsOpt);
+
+  // フォントウェイト
+  const fwOpt=document.createElement("div");fwOpt.className="settingsOpt";fwOpt.style.flexDirection="column";fwOpt.style.alignItems="flex-start";fwOpt.style.gap="8px";
+  const fwLbl=document.createElement("div");fwLbl.className="label";fwLbl.textContent="文字の太さ";
+  const fwBtns=document.createElement("div");fwBtns.style.cssText="display:flex;gap:6px;width:100%;";
+  ["極細","細","中","太","極太"].forEach((l,i)=>{
+    const b=document.createElement("button");b.textContent=l;
+    b.style.cssText="flex:1;padding:7px 0;border-radius:8px;border:1px solid var(--line);font-size:11px;cursor:pointer;";
+    b.style.background=DATA.pillFontWeight===(i+1)?"var(--accent)":"var(--btnbg)";
+    b.style.color=DATA.pillFontWeight===(i+1)?"#fff":"var(--sub)";
+    b.onclick=()=>{DATA.pillFontWeight=i+1;save();renderSettingsBody(wrap);};
+    fwBtns.appendChild(b);
+  });
+  fwOpt.append(fwLbl,fwBtns);g3.appendChild(fwOpt);
+
+  // テキストカラー
+  const tcOpt=document.createElement("div");tcOpt.className="settingsOpt";tcOpt.style.flexDirection="column";tcOpt.style.alignItems="flex-start";tcOpt.style.gap="8px";
+  const tcLbl=document.createElement("div");tcLbl.className="label";tcLbl.textContent="文字の色";
+  const tcBtns=document.createElement("div");tcBtns.style.cssText="display:flex;gap:8px;";
+  [["black","黒"],["white","白"]].forEach(([val,lbl])=>{
+    const b=document.createElement("button");
+    b.style.cssText="padding:7px 20px;border-radius:8px;border:1px solid var(--line);font-size:13px;cursor:pointer;";
+    b.textContent=lbl;
+    b.style.background=DATA.pillTextColor===val?"var(--accent)":"var(--btnbg)";
+    b.style.color=DATA.pillTextColor===val?"#fff":"var(--sub)";
+    b.onclick=()=>{DATA.pillTextColor=val;save();renderSettingsBody(wrap);};
+    tcBtns.appendChild(b);
+  });
+  tcOpt.append(tcLbl,tcBtns);g3.appendChild(tcOpt);
+
+  wrap.appendChild(g3);
+  return wrap;
 }
 function renameColor(c){
   const nm=prompt("この色の名前を入力してください",c.name||"");
@@ -474,8 +554,9 @@ function renameColor(c){
 }
 
 function openForm(ev){
-  state.editing=ev?Object.assign({},ev):{id:"e"+Date.now(),type:"event",title:"",date:state.selectedDate,time:"",endTime:"",colorId:DATA.colors[0].id,repeat:"none",memo:"",done:false};
+  state.editing=ev?Object.assign({},ev):{id:"e"+Date.now(),type:"event",title:"",date:state.selectedDate,endDate:"",time:"",endTime:"",colorId:DATA.colors[0].id,repeat:"none",memo:"",done:false};
   if(!state.editing.endTime)state.editing.endTime="";
+  if(!state.editing.endDate)state.editing.endDate="";
   const overlay=document.createElement("div");overlay.className="overlay";
   overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
   const sheet=document.createElement("div");sheet.className="sheet";
@@ -516,8 +597,14 @@ function renderForm(sheet,overlay){
 
   const dateRow=document.createElement("div");dateRow.className="formRow";
   const dl=document.createElement("label");dl.textContent="日付";
-  const di=document.createElement("input");di.type="date";di.value=ed.date;di.oninput=()=>{ed.date=di.value;};
-  dateRow.append(dl,di);body.appendChild(dateRow);
+  const dw=document.createElement("div");dw.style.cssText="flex:1;display:flex;align-items:center;gap:4px;";
+  const di=document.createElement("input");di.type="date";di.value=ed.date;di.style.cssText="flex:1;border:none;background:none;font-size:13px;color:var(--text);outline:none;min-width:0;";
+  di.oninput=()=>{ed.date=di.value;};
+  const dsep=document.createElement("div");dsep.textContent="〜";dsep.style.cssText="color:var(--sub);font-size:12px;flex-shrink:0;";
+  const di2=document.createElement("input");di2.type="date";di2.value=ed.endDate||"";di2.style.cssText="flex:1;border:none;background:none;font-size:13px;color:var(--sub);outline:none;min-width:0;";
+  di2.placeholder="終了日(任意)";
+  di2.oninput=()=>{ed.endDate=di2.value;};
+  dw.append(di,dsep,di2);dateRow.append(dl,dw);body.appendChild(dateRow);
 
   /* 時間 start ~ end */
   const timeRow=document.createElement("div");timeRow.className="formRow";
@@ -537,19 +624,27 @@ function renderForm(sheet,overlay){
   const cl=document.createElement("label");cl.textContent="色";cl.style.paddingTop="10px";
   const cw=document.createElement("div");cw.style.flex="1";
   const hint=document.createElement("div");hint.className="colorHint";hint.textContent="長押しで名前を登録できます";
+  if(!ed._showAllColors)ed._showAllColors=false;
   const cp=document.createElement("div");cp.className="colorPick";
-  DATA.colors.forEach(c=>{
-    const sw=document.createElement("div");sw.className="swatch"+(ed.colorId===c.id?" sel":"");
-    sw.style.background=c.hex;
-    if(c.name){sw.textContent=c.name[0];sw.style.textShadow="0 1px 2px rgba(0,0,0,.35)";}
+  function makeSwatch(c2,cp2){
+    const sw=document.createElement("div");sw.className="swatch"+(ed.colorId===c2.id?" sel":"");
+    sw.style.background=c2.hex;
+    if(c2.name){sw.textContent=c2.name[0];sw.style.textShadow="0 1px 2px rgba(0,0,0,.35)";}
     let timer=null,lp=false;
-    const sp2=()=>{lp=false;timer=setTimeout(()=>{lp=true;const nm=prompt("この色の名前を入力してください",c.name||"");if(nm!==null){c.name=nm.trim();save();renderForm(sheet,overlay);}},500);};
+    const sp2=()=>{lp=false;timer=setTimeout(()=>{lp=true;const nm=prompt("この色の名前を入力してください",c2.name||"");if(nm!==null){c2.name=nm.trim();save();renderForm(sheet,overlay);}},500);};
     const ep2=()=>clearTimeout(timer);
     sw.addEventListener("touchstart",sp2);sw.addEventListener("touchend",ep2);
     sw.addEventListener("mousedown",sp2);sw.addEventListener("mouseup",ep2);
-    sw.addEventListener("click",()=>{if(lp)return;ed.colorId=c.id;renderForm(sheet,overlay);});
-    cp.appendChild(sw);
-  });
+    sw.addEventListener("click",()=>{if(lp)return;ed.colorId=c2.id;renderForm(sheet,overlay);});
+    cp2.appendChild(sw);
+  }
+  const visibleColors=ed._showAllColors?DATA.colors:DATA.colors.slice(0,10);
+  visibleColors.forEach(c2=>makeSwatch(c2,cp));
+  const moreBtn=document.createElement("button");
+  moreBtn.style.cssText="font-size:11px;background:var(--btnbg);border:1px solid var(--line);border-radius:12px;padding:3px 8px;cursor:pointer;color:var(--accent);white-space:nowrap;";
+  moreBtn.textContent=ed._showAllColors?"折りたたむ":"＋色作成";
+  moreBtn.onclick=()=>{ed._showAllColors=!ed._showAllColors;renderForm(sheet,overlay);};
+  cp.appendChild(moreBtn);
   cw.append(hint,cp);colorRow.append(cl,cw);body.appendChild(colorRow);
 
   const repRow=document.createElement("div");repRow.className="formRow";
